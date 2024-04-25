@@ -234,6 +234,44 @@ ggplot() + geom_line(aes(x=1:length(y.pred.cumulative),y=y.pred.cumulative), col
 
 ### 4. Indicators on past drops
 
+### 4. Indicators on past drops
+
 ### 5. Markov Switching Model
 
+subdf.train.ridge.ii = subdf.train
+subdf.train.ridge.ii$DATE = NULL
+subdf.train.ridge.ii <- subdf.train.ridge.ii %>%
+  mutate(
+    lag_1 = lag(UNRATE, 1),
+    lag_2 = lag(UNRATE, 2),
+    lag_3 = lag(UNRATE, 3),
+    lag_4 = lag(UNRATE, 4),
+    lag_12 = lag(UNRATE, 12),
+    lag_24 = lag(UNRATE, 24)
+  )
+subdf.train.ridge.ii = na.omit(subdf.train.ridge.ii) # omit rows with no lags
+nsub = nrow(subdf.train.ridge.ii)
+subdf.train.ridge.ii.final = subdf.train.ridge.ii[1:(nsub - 1),]
+subdf.train.ridge.ii.final$diff = diff(subdf.train.ridge.ii$UNRATE, 1)
 
+lm.model = lm(diff~., data=subdf.train.ridge.ii.final)
+summary(lm.model)
+mod.mswm = msmFit(lm.model,
+                  k=2, # 2 regimes
+                  p=0, # number of AR coefficients
+                  sw=c(rep(T, 12)))
+
+summary(mod.mswm)
+par(mar=c(5.1,4.1,4.1,2.1))
+plotProb(mod.mswm,which=1) # plotProb(mod.mswm,which=1)
+plotProb(mod.mswm,which=2)
+
+combined_df <- data.frame(XX = as.numeric(rownames(subdf.train.ridge.ii.final)), X = subdf$UNRATE[as.numeric(rownames(subdf.train.ridge.ii.final))], Y = mod.mswm@Fit@filtProb[,1])
+ggplot(combined_df, aes(xx = XX, x = X, y = Y)) +
+  geom_line(aes(x=XX, y=X), color = "blue") +
+  geom_rect(aes(xmin = XX - 0.5, xmax = XX + 0.5, ymin = -Inf, ymax = Inf, fill = Y > 0.1), alpha = 0.3) +
+  scale_fill_manual(values = c("TRUE" = "green", "FALSE" = "red")) +
+  theme_minimal() +
+  labs(title = "Line Graph with Colored Rectangles",
+       x = "X Axis",
+       y = "Y Axis")

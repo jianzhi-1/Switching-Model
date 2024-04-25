@@ -102,3 +102,54 @@ calculate_mse_cutoff(subdf.test$UNRATE, y.pred) # 0.0568
 ggplot() + geom_line(aes(x=1:n.test,y=y.pred), color="blue") + 
   geom_line(aes(x=1:n.test,y=subdf.test$UNRATE), color="darkgreen")
 
+### 3. Ridge Regression
+# Idea is to use other covariates to improve prediction error
+
+# 3.1 Use the covariates at the same time: UNRATE    FEDFUNDS         GDP    CPIAUCSL
+subdf.train.ridge = subdf.train[1:(n.train - 1),]
+subdf.train.ridge$diff = diff(subdf.train$UNRATE, 1)
+subdf.train.ridge$DATE = NULL
+
+y = subdf.train.ridge$diff
+subdf.train.ridge$diff = NULL
+X = as.matrix(subdf.train.ridge)
+
+cv_model = cv.glmnet(X, y, alpha = 0)
+best_lambda = cv_model$lambda.min # 0.00212585 (this is pathetic)
+ridge_model_best = glmnet(X, y, alpha = 0, lambda = best_lambda)
+
+coef(ridge_model_best)
+# s0
+# (Intercept)  6.838000e-03
+# UNRATE      -7.232122e-03
+# FEDFUNDS     9.390256e-03
+# GDP          1.498277e-05
+# CPIAUCSL    -8.679753e-04
+
+fitted_values = predict(ridge_model_best, newx = X)
+calculate_mse(y, fitted_values) # 0.03546902
+ggplot() + geom_line(aes(x=1:length(fitted_values),y=fitted_values), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+# Evaluate on test set
+subdf.test.ridge = subdf.test[1:(n.test-1),]
+subdf.test.ridge$diff = diff(subdf.test$UNRATE, 1)
+subdf.test.ridge$DATE = NULL
+
+y = subdf.test.ridge$diff
+subdf.test.ridge$diff = NULL
+X = as.matrix(subdf.test.ridge)
+
+y.pred = predict(ridge_model_best, newx = X)
+calculate_mse(y, y.pred) # 0.9388009
+calculate_mse_cutoff(y, y.pred) # 0.03039402
+ggplot() + geom_line(aes(x=1:length(y.pred),y=y.pred), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+# Cumulative Plot
+y.pred.cumulative = y.pred + subdf.test$UNRATE[1:(n.test-1)]
+y = subdf.test[2:n.test,]$UNRATE
+ggplot() + geom_line(aes(x=1:length(y.pred.cumulative),y=y.pred.cumulative), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+

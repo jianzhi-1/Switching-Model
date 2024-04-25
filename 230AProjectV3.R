@@ -152,4 +152,88 @@ y = subdf.test[2:n.test,]$UNRATE
 ggplot() + geom_line(aes(x=1:length(y.pred.cumulative),y=y.pred.cumulative), color="blue", linewidth=0.2) + 
   geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
 
+# 3.2 Use in addition the lags y(t-1), y(t-2), y(t-3), y(t-4), y(t-12), y(t-24) suggested by PACF
+subdf.train.ridge.ii = subdf.train
+subdf.train.ridge.ii$DATE = NULL
+subdf.train.ridge.ii <- subdf.train.ridge.ii %>%
+  mutate(
+    lag_1 = lag(UNRATE, 1),
+    lag_2 = lag(UNRATE, 2),
+    lag_3 = lag(UNRATE, 3),
+    lag_4 = lag(UNRATE, 4),
+    lag_12 = lag(UNRATE, 12),
+    lag_24 = lag(UNRATE, 24)
+  )
+subdf.train.ridge.ii = na.omit(subdf.train.ridge.ii) # omit rows with no lags
+nsub = nrow(subdf.train.ridge.ii)
+subdf.train.ridge.ii.final = subdf.train.ridge.ii[1:(nsub - 1),]
+subdf.train.ridge.ii.final$diff = diff(subdf.train.ridge.ii$UNRATE, 1)
+
+y = subdf.train.ridge.ii.final$diff
+subdf.train.ridge.ii.final$diff = NULL
+X = as.matrix(subdf.train.ridge.ii.final)
+
+cv_model = cv.glmnet(X, y, alpha = 0)
+best_lambda = cv_model$lambda.min # 0.004143626 (this is pathetic)
+ridge_model_best = glmnet(X, y, alpha = 0, lambda = best_lambda)
+
+coef(ridge_model_best)
+# s0
+# (Intercept)  7.108730e-02
+# UNRATE       5.511277e-02
+# FEDFUNDS     8.260150e-03
+# GDP          6.931299e-06
+# CPIAUCSL    -2.727976e-04
+# lag_1        5.537325e-02
+# lag_2       -1.089737e-02
+# lag_3       -3.174353e-02
+# lag_4       -6.846218e-02
+# lag_12      -1.422965e-02
+# lag_24      -5.662170e-03
+
+# The small lag coefficients are concerning, because their tick size is 0.1, so a change in 0.1 units correspond to a 0.001 change, which is 2 magnitudes less than a tick size of diff (0.1)
+# I don't expect good results here
+
+fitted_values = predict(ridge_model_best, newx = X)
+calculate_mse(y, fitted_values) # 0.03068849 lower apparent error!
+ggplot() + geom_line(aes(x=1:length(fitted_values),y=fitted_values), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+# Evaluate on test set
+subdf.train.ridge.ii.test = subdf[(n.train-23):n,]
+subdf.train.ridge.ii.test$DATE = NULL
+subdf.train.ridge.ii.test <- subdf.train.ridge.ii.test %>%
+  mutate(
+    lag_1 = lag(UNRATE, 1),
+    lag_2 = lag(UNRATE, 2),
+    lag_3 = lag(UNRATE, 3),
+    lag_4 = lag(UNRATE, 4),
+    lag_12 = lag(UNRATE, 12),
+    lag_24 = lag(UNRATE, 24)
+  )
+subdf.train.ridge.ii.test = na.omit(subdf.train.ridge.ii.test)
+  
+subdf.train.ridge.ii.test = subdf.train.ridge.ii.test[1:(n.test-1),]
+subdf.train.ridge.ii.test$diff = diff(subdf.test$UNRATE, 1)
+
+y = subdf.train.ridge.ii.test$diff
+subdf.train.ridge.ii.test$diff = NULL
+X = as.matrix(subdf.train.ridge.ii.test)
+
+y.pred = predict(ridge_model_best, newx = X)
+calculate_mse(y, y.pred) # 1.012032
+calculate_mse_cutoff(y, y.pred) # 0.02651024 # better than naive method
+ggplot() + geom_line(aes(x=1:length(y.pred),y=y.pred), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+# Cumulative Plot
+y.pred.cumulative = y.pred + subdf.test$UNRATE[1:(n.test-1)]
+y = subdf.test[2:n.test,]$UNRATE
+ggplot() + geom_line(aes(x=1:length(y.pred.cumulative),y=y.pred.cumulative), color="blue", linewidth=0.2) + 
+  geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
+
+### 4. Indicators on past drops
+
+### 5. Markov Switching Model
+
 

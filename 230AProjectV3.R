@@ -86,4 +86,19 @@ calculate_mse <- function(observed_values, predicted_values) {
 }
 
 ### 2. Baseline Model
-# Simply predict using the previous month's unemployment rate
+
+# 2.1 Simply predict using the previous month's unemployment rate
+y.pred = c(subdf.train$UNRATE[n.train], subdf.test$UNRATE[1:(n.test - 1)])
+calculate_mse(subdf.test$UNRATE, y.pred) # 0.9312687
+calculate_mse_cutoff(subdf.test$UNRATE, y.pred) # 0.027
+ggplot() + geom_line(aes(x=1:n.test,y=y.pred), color="blue") + 
+  geom_line(aes(x=1:n.test,y=subdf.test$UNRATE), color="darkgreen")
+# Prediction lags behind by 1
+
+# 2.2 Simply use the previous two data points to predict the next month's unemployment rate
+y.pred = 2*c(subdf.train$UNRATE[n.train], subdf.test$UNRATE[1:(n.test - 1)]) - c(subdf.train$UNRATE[n.train-1], subdf.train$UNRATE[n.train], subdf.test$UNRATE[1:(n.test - 2)])
+calculate_mse(subdf.test$UNRATE, y.pred) # 1.842836
+calculate_mse_cutoff(subdf.test$UNRATE, y.pred) # 0.0568
+ggplot() + geom_line(aes(x=1:n.test,y=y.pred), color="blue") + 
+  geom_line(aes(x=1:n.test,y=subdf.test$UNRATE), color="darkgreen")
+

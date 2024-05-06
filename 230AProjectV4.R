@@ -144,6 +144,20 @@ calculate_mse_cutoff(subdf.test$UNRATE, y.pred) # 0.0568
 ggplot() + geom_line(aes(x=1:n.test,y=y.pred), color="blue") + 
   geom_line(aes(x=1:n.test,y=subdf.test$UNRATE), color="darkgreen")
 
+# 2.3 Use AR(4)
+arima_model = arima(subdf.train$UNRATE, order = c(4, 0, 0))
+summary(arima_model)
+arima.coef = coef(arima_model)
+arima.pred = numeric(n.test) # AR(4) predictions
+for (i in (n.train+1):n){
+  arima.pred[i - n.train] = arima.coef%*%c(subdf[(i - 1),]$UNRATE, subdf[(i - 2),]$UNRATE, subdf[(i - 3),]$UNRATE, subdf[(i - 4),]$UNRATE, 0)
+}
+
+calculate_mse(subdf.test$UNRATE, arima.pred) # 1.089113
+calculate_mse_cutoff(subdf.test$UNRATE, arima.pred) # 0.03116826
+ggplot() + geom_line(aes(x=1:n.test,y=arima.pred), color="blue") + 
+  geom_line(aes(x=1:n.test,y=subdf.test$UNRATE), color="darkgreen")
+
 ### 3. Ridge Regression
 # Idea is to use other covariates to improve prediction error
 

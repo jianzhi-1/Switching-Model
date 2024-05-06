@@ -85,6 +85,48 @@ calculate_mse <- function(observed_values, predicted_values) {
   return(mse)
 }
 
+### 1.5. Effect of Interest Rate on Unemployment
+#        Is interest rate an important covariate?
+onedf = subdf
+onedf$DATE = NULL
+
+# add in diff 
+twodf = onedf[1:(nrow(onedf)-1),]
+twodf$diff = diff(onedf$UNRATE, 1)
+
+ggplot() + geom_histogram(colour="black", fill="white", aes(onedf$FEDFUNDS)) # histogram of FEDFUNDS
+cor(twodf$diff, twodf$FEDFUNDS) # correlation between UNRATE and FEDFUNDS
+
+# * Regression 1: diff ~ 1 + FEDFUNDS
+ols.fit = lm(diff~FEDFUNDS, data=twodf)
+summary(ols.fit)
+ols.fit.hc0 = sqrt(diag(hccm(ols.fit, type="hc0")))
+ols.fit.hc0 # robust beta error
+
+# * Regression 2: diff ~ 1 + FEDFUNDS + GDP + CPI + UNRATE
+ols.fit = lm(diff~., data=twodf)
+summary(ols.fit)
+ols.fit.hc0 = sqrt(diag(hccm(ols.fit, type="hc0")))
+ols.fit.hc0 # robust beta error
+
+# adding the lags
+onepdf = onedf
+onepdf$lag1 = lag(onedf$UNRATE, 1)
+onepdf$lag2 = lag(onedf$UNRATE, 2)
+onepdf$lag3 = lag(onedf$UNRATE, 3)
+onepdf$lag4 = lag(onedf$UNRATE, 4)
+onepdf$lag12 = lag(onedf$UNRATE, 12)
+onepdf$lag24 = lag(onedf$UNRATE, 24)
+one.prime.df = onepdf[1:(nrow(onepdf)-1),]
+one.prime.df$diff = diff(onepdf$UNRATE, 1)
+one.prime.df = na.omit(one.prime.df)
+
+# * Regression 3: diff ~ 1 + FEDFUNDS + GDP + CPI + UNRATE + lag1 + lag2 + lag3 + lag4 + lag12 + lag24
+ols.fit = lm(diff~., data=one.prime.df)
+summary(ols.fit)
+ols.fit.hc0 = sqrt(diag(hccm(ols.fit, type="hc0")))
+ols.fit.hc0 # robust beta error
+
 ### 2. Baseline Model
 
 # 2.1 Simply predict using the previous month's unemployment rate

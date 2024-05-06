@@ -288,9 +288,150 @@ y = subdf.test[2:n.test,]$UNRATE
 ggplot() + geom_line(aes(x=1:length(y.pred.cumulative),y=y.pred.cumulative), color="blue", linewidth=0.2) + 
   geom_line(aes(x=1:length(y),y=y), color="darkgreen", linewidth=0.2)
 
-### 4. Indicators on past drops
+ggplot() + geom_line(aes(x=1:(n.test-1),y=y - y.pred.cumulative), color="blue", linewidth=0.2) # residual plot
 
 ### 4. Indicators on past drops
+
+gap = 5
+subsubdf = subdf.train[1:(nrow(subdf.train)-1),]
+subsubdf$diff = diff(subdf.train$UNRATE, 1)
+subsubdf$DATE = NULL
+subsubdf.iv = subsubdf[(gap+1):nrow(subsubdf),]
+subsubdf.iv$ind = diff(subsubdf$UNRATE, lag=gap) # ind column = UNRATE_t - UNRATE_{t - gap}
+
+summary(subsubdf.iv$ind)
+
+# 4.1 Finding the best gap and threshold lambda
+gap_arr = seq(3, 10, 1)
+# gap_arr = seq(5, 5, 1)
+for (gap in gap_arr){
+  
+  subsubdf.iv = subsubdf[(gap+1):nrow(subsubdf),]
+  subsubdf.iv$ind = diff(subsubdf$UNRATE, lag=gap)
+  
+  first_quartile = as.numeric(summary(subsubdf.iv$ind)[2])
+  third_quartile = as.numeric(summary(subsubdf.iv$ind)[5])
+  
+  lambda_arr = seq(first_quartile, third_quartile, 0.1) # brute force through -0.7, ..., 0.7
+  #lambda_arr = seq(-0.7, 0.7, 0.1)
+  
+  l = length(lambda_arr)
+  res = numeric(l)
+  cnt = 1
+  for (lambda in lambda_arr){
+    # 4.1.1 Separate into two regimes
+    regime.one.lambda = subsubdf.iv[subsubdf.iv$ind > lambda,]
+    regime.two.lambda = subsubdf.iv[subsubdf.iv$ind <= lambda,]
+    
+    # 4.1.2 Do separate regression
+    y.one = regime.one.lambda$diff
+    regime.one.lambda$diff = NULL
+    X.one = as.matrix(regime.one.lambda)
+    
+    cv_model.one = cv.glmnet(X.one, y.one, alpha = 0)
+    best_lambda.one = cv_model.one$lambda.min # 0.004143626 (this is pathetic)
+    ridge_model_best.one = glmnet(X.one, y.one, alpha = 0, lambda = best_lambda.one)
+    
+    fitted_values.one = predict(ridge_model_best.one, newx = X.one)
+    error.one = calculate_mse(y.one, fitted_values.one)
+    
+    y.two = regime.two.lambda$diff
+    regime.two.lambda$diff = NULL
+    X.two = as.matrix(regime.two.lambda)
+    
+    cv_model.two = cv.glmnet(X.two, y.two, alpha = 0)
+    best_lambda.two = cv_model.two$lambda.min # 0.004143626 (this is pathetic)
+    ridge_model_best.two = glmnet(X.two, y.two, alpha = 0, lambda = best_lambda.two)
+    
+    fitted_values.two = predict(ridge_model_best.two, newx = X.two)
+    calculate_mse(y.two, fitted_values.two)
+    
+    error.two = calculate_mse(y.two, fitted_values.two)
+    
+    error.tot = (error.one*length(y.one) + error.two*length(y.two))/(length(y.one) + length(y.two))
+    
+    print(paste(lambda, error.tot, sep=" -> "))
+    res[cnt] = error.tot
+    cnt = cnt + 1
+    # 4.1.3 
+  }
+  idx = which.min(res) # select index of minimum loss
+  print(gap)
+  print(lambda_arr[idx]) # print corresponding minimum threshold
+}
+
+# after analysis (lambda, gap) = (0.1, 5) works well
+lambda = 0.1
+gap = 5
+subsubdf.iv = subsubdf[(gap+1):nrow(subsubdf),]
+subsubdf.iv$ind = diff(subsubdf$UNRATE, lag=gap)
+regime.one.lambda.star = subsubdf.iv[subsubdf.iv$ind > lambda,]
+regime.two.lambda.star = subsubdf.iv[subsubdf.iv$ind <= lambda,]
+
+ggplot() + geom_point(aes(x=as.numeric(rownames(regime.one.lambda.star)),y=regime.one.lambda.star$UNRATE)) +
+  geom_point(aes(x=as.numeric(rownames(regime.two.lambda.star)),y=regime.two.lambda.star$UNRATE), color="blue")
+
+y.one.star = regime.one.lambda.star$diff
+regime.one.lambda.star$diff = NULL
+X.one.star = as.matrix(regime.one.lambda.star)
+
+cv_model.one.star = cv.glmnet(X.one.star, y.one.star, alpha = 0)
+best_lambda.one.star = cv_model.one.star$lambda.min # 0.007515883
+ridge_model_best.one.star = glmnet(X.one.star, y.one.star, alpha = 0, lambda = best_lambda.one.star)
+
+fitted_values.one.star = predict(ridge_model_best.one.star, newx = X.one.star)
+error.one.star = calculate_mse(y.one.star, fitted_values.one.star)
+error.one.star # 0.03859857 (apparent error for this section)
+
+y.two.star = regime.two.lambda.star$diff
+regime.two.lambda.star$diff = NULL
+X.two.star = as.matrix(regime.two.lambda.star)
+
+cv_model.two.star = cv.glmnet(X.two.star, y.two.star, alpha = 0)
+best_lambda.two.star = cv_model.two.star$lambda.min # 0.004143626 (this is pathetic)
+ridge_model_best.two.star = glmnet(X.two.star, y.two.star, alpha = 0, lambda = best_lambda.two.star)
+
+fitted_values.two.star = predict(ridge_model_best.two.star, newx = X.two.star)
+error.two.star = calculate_mse(y.two.star, fitted_values.two.star)
+error.two.star # 0.02491733 (apparent error for this section)
+
+ggplot() + geom_point(aes(x=as.numeric(rownames(regime.one.lambda.star)),y=y.one.star)) +
+  geom_point(aes(x=as.numeric(rownames(regime.two.lambda.star)),y=y.two.star), color="blue") +
+  geom_point(aes(x=as.numeric(rownames(regime.one.lambda.star)),y=fitted_values.one.star), color="green") +
+  geom_point(aes(x=as.numeric(rownames(regime.two.lambda.star)),y=fitted_values.two.star), color="red")
+
+mse.up = calculate_mse(y.one.star, fitted_values.one.star)
+mse.down = calculate_mse(y.two.star, fitted_values.two.star)
+
+# Here is the train error
+mse.tot = (length(y.one.star)*mse.up + length(y.two.star)*mse.down)/(length(y.two.star) + length(y.one.star)) # 0.0292149
+
+indicator.pred = numeric(n.test)
+subdf.test.cur = subdf
+subdf.test.cur$DATE = NULL
+subdf.test.cur$ind = c(rep(NA, gap), diff(subdf.test.cur$UNRATE, lag=gap))
+for (i in (n.train+1):n){
+  if (subdf.test.cur[i,]$ind > lambda){
+    # regime 1
+    indicator.pred[i - n.train] = predict(ridge_model_best.one.star, newx = subdf.test.cur[i,])
+  } else {
+    # regime 2
+    indicator.pred[i - n.train] = predict(ridge_model_best.two.star, newx = subdf.test.cur[i,])
+  }
+}
+y.ind.true = subdf.test.cur$UNRATE[(n.train+1):n] - subdf.test.cur$UNRATE[n.train:(n-1)]
+calculate_mse(y.ind.true, indicator.pred) # 0.8221356
+calculate_mse_cutoff(y.ind.true, indicator.pred) # 0.02453915
+
+ggplot() + geom_line(aes(x=1:n.test,y=subdf.test.cur$UNRATE[n.train:(n-1)]+indicator.pred), color="blue") +
+  geom_line(aes(x=1:n.test,y=subdf.test.cur$UNRATE[(n.train+1):n]), color="green") # plot of prediction vs actual
+
+ggplot() + geom_line(aes(x=1:n.test,y=subdf.test.cur$UNRATE[(n.train+1):n] - (subdf.test.cur$UNRATE[n.train:(n-1)]+indicator.pred)), color="black") # residual pplot
+
+ggplot() + geom_line(aes(x=1:75,y=(subdf.test.cur$UNRATE[(n.train+1):n] - (subdf.test.cur$UNRATE[n.train:(n-1)]+indicator.pred))[1:75]), linewidth=0.2,color="black") +
+ geom_line(aes(x=1:75,y=c(NA, (y - y.pred.cumulative)[1:74])), linewidth=0.2, color="blue") # residual plot
+
+# Indicator regression beats ridge regression on turning points (?)
 
 ### 5. Markov Switching Model
 

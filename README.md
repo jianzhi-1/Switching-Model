@@ -4,7 +4,7 @@
 ## Research Questions
 - Is interest rate a useful predictor of U.S. unemployment rate?
 - Is it possible to predict one-month-ahead unemployment rate?
-- What are the models to fit unemployment rate?
+- What are the models adequate enough to fit unemployment rate?
 
 ## Models
 - AR Model (Baseline)
